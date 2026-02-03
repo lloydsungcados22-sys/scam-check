@@ -1,4 +1,5 @@
 """Verdict card and shareable snippet — high-impact scam-checker theme."""
+import re
 import streamlit as st
 from components.theme import ALERT_RED, ALERT_AMBER, SAFE_GREEN, BG_CARD, TEXT_PRIMARY, TEXT_MUTED, RADIUS
 
@@ -11,6 +12,13 @@ def _verdict_color(verdict: str) -> str:
     return ALERT_AMBER  # SUSPICIOUS
 
 
+def _strip_html(s: str) -> str:
+    """Remove HTML tags so AI-returned HTML is shown as plain text."""
+    if not s or not isinstance(s, str):
+        return ""
+    return re.sub(r"<[^>]+>", "", s).strip()
+
+
 def _escape(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")
 
@@ -19,17 +27,17 @@ def verdict_card(result: dict):
     """Render big verdict card: label, confidence, category, reasons, actions, red flags, copy warning."""
     verdict = (result.get("verdict") or "SUSPICIOUS").upper()
     confidence = result.get("confidence", 0)
-    category = result.get("category") or "Unknown"
+    category = _strip_html(str(result.get("category") or "Unknown"))
     reasons = result.get("reasons") or []
     recommended_actions = result.get("recommended_actions") or []
     warning_message = result.get("warning_message") or ""
     red_flags = result.get("red_flags") or []
-    safety_notes = (result.get("safety_notes") or "").strip()
+    safety_notes = _strip_html((result.get("safety_notes") or "").strip())
     color = _verdict_color(verdict)
 
-    reasons_esc = "".join(f"<li>{_escape(r)}</li>" for r in reasons[:8])
-    actions_esc = "".join(f"<li>{_escape(a)}</li>" for a in recommended_actions[:6])
-    red_flags_esc = ", ".join(_escape(f) for f in red_flags[:5]) if red_flags else ""
+    reasons_esc = "".join(f"<li>{_escape(_strip_html(str(r)))}</li>" for r in reasons[:8])
+    actions_esc = "".join(f"<li>{_escape(_strip_html(str(a)))}</li>" for a in recommended_actions[:6])
+    red_flags_esc = ", ".join(_escape(_strip_html(str(f))) for f in red_flags[:5]) if red_flags else ""
     list_color = "#e2e8f0"
 
     st.markdown(
