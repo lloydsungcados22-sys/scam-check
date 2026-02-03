@@ -96,6 +96,7 @@ def run():
                         msg_hash=result.get("msg_hash", ""),
                     )
                     st.session_state["last_result"] = result
+                    st.session_state["last_message"] = message.strip()
                     st.rerun()
 
     if st.session_state.get("last_result"):
@@ -105,7 +106,9 @@ def run():
             unsafe_allow_html=True,
         )
         st.subheader("Verdict")
-        verdict_card(st.session_state["last_result"])
+        # Use saved message so share section has message + verdict even if user clears the box
+        last_message = st.session_state.get("last_message") or st.session_state.get("scam_message") or ""
+        verdict_card(st.session_state["last_result"], message=last_message)
 
     st.markdown("---")
     st.caption("We do not store your full message. Only verdict and category are saved. AI can be wrong — verify with official channels (GCash, Maya, banks, SSS, PhilHealth).")
