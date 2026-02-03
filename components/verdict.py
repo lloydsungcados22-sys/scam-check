@@ -1,6 +1,8 @@
 """Verdict card and shareable snippet — high-impact scam-checker theme."""
+import html
 import re
 import streamlit as st
+import streamlit.components.v1 as components
 from components.theme import ALERT_RED, ALERT_AMBER, SAFE_GREEN, BG_CARD, TEXT_PRIMARY, TEXT_MUTED, RADIUS
 
 
@@ -16,15 +18,65 @@ def _strip_html(s: str) -> str:
     """Remove HTML tags so AI-returned HTML is shown as plain text."""
     if not s or not isinstance(s, str):
         return ""
-    return re.sub(r"<[^>]+>", "", s).strip()
+    t = str(s)
+    # Remove tags (repeat for nested tags)
+    for _ in range(5):
+        t = re.sub(r"<[^>]*>", "", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
 
 
 def _escape(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")
 
 
-def verdict_card(result: dict):
-    """Render big verdict card: label, confidence, category, reasons, actions, red flags, copy warning."""
+def _build_full_share_text(result: dict, message: str = "") -> str:
+    """Build complete shareable text: message + verdict + reasons + actions + notes (all plain text, no HTML)."""
+    verdict = (result.get("verdict") or "SUSPICIOUS").upper()
+    confidence = result.get("confidence", 0)
+    category = _strip_html(str(result.get("category") or "Unknown"))
+    reasons = result.get("reasons") or []
+    actions = result.get("recommended_actions") or []
+    warning_message = _strip_html((result.get("warning_message") or "").strip())
+    red_flags = result.get("red_flags") or []
+    safety_notes = _strip_html((result.get("safety_notes") or "").strip())
+
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "🛡️ CheckMoYan — Scam Check Result",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "",
+        f"VERDICT: {verdict} ({confidence}%)",
+        f"Category: {category}",
+        "",
+    ]
+    if (message or "").strip():
+        lines.append("MESSAGE CHECKED:")
+        lines.append((message or "").strip()[:2000])
+        lines.append("")
+    lines.append("Why it looks like this:")
+    for r in reasons[:8]:
+        lines.append("  • " + _strip_html(str(r)))
+    lines.append("")
+    lines.append("What to do next:")
+    for i, a in enumerate(actions[:6], 1):
+        lines.append(f"  {i}. " + _strip_html(str(a)))
+    if red_flags:
+        lines.append("")
+        lines.append("Red flags: " + ", ".join(_strip_html(str(f)) for f in red_flags[:5]))
+    if safety_notes:
+        lines.append("")
+        lines.append("Note: " + safety_notes)
+    if warning_message:
+        lines.append("")
+        lines.append("⚠️ " + warning_message)
+    lines.append("")
+    lines.append("— Check if it's a scam: CheckMoYan")
+    return "\n".join(lines)
+
+
+def verdict_card(result: dict, message: str = ""):
+    """Render big verdict card: label, confidence, category, reasons, actions, red flags, copy/share section."""
     verdict = (result.get("verdict") or "SUSPICIOUS").upper()
     confidence = result.get("confidence", 0)
     category = _strip_html(str(result.get("category") or "Unknown"))
@@ -64,17 +116,56 @@ def verdict_card(result: dict):
         unsafe_allow_html=True,
     )
 
-    # Copy warning message button
-    if warning_message:
-        snippet = share_snippet(verdict, confidence, category, warning_message)
-        st.text_area("Copy warning message to share", value=snippet, height=100, key="share_snippet_area")
-        if st.button("Copy to clipboard", key="copy_warning"):
-            st.session_state["clipboard_copy"] = snippet
-            st.success("Copied! Paste in Messenger or SMS to warn others.")
+    # Share section: full message + verdict (always show when we have a result)
+    full_text = _build_full_share_text(result, message)
+    st.subheader("Copy or share this result")
+    st.caption("Message + verdict. Select the text and press Ctrl+C (Cmd+C) to copy, or use Download.")
+    st.text_area(
+        "Full result (message + verdict)",
+        value=full_text,
+        height=220,
+        key="share_snippet_area",
+        label_visibility="collapsed",
+    )
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.download_button(
+            label="Download (message + verdict)",
+            data=full_text,
+            file_name="checkmoyan_verdict.txt",
+            mime="text/plain",
+            key="download_verdict_btn",
+        )
+    with col2:
+        # One-click copy via browser clipboard (text in hidden textarea to avoid quote/HTML issues)
+        text_escaped = html.escape(full_text)
+        copy_html = f"""
+        <textarea id="sharecopy" style="display:none; width:100%; height:0;" readonly>{text_escaped}</textarea>
+        <button id="copybtn" style="
+            padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600;
+            background: #ef4444; color: white; border: none; cursor: pointer;
+        " onclick="
+            var el = document.getElementById('sharecopy');
+            var text = el.value;
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                navigator.clipboard.writeText(text).then(function() {{
+                    var b = document.getElementById('copybtn');
+                    b.textContent = 'Copied!';
+                    b.style.background = '#10b981';
+                    setTimeout(function() {{ b.textContent = 'Copy to clipboard'; b.style.background = '#ef4444'; }}, 2000);
+                }}).catch(function() {{ el.select(); document.execCommand('copy'); }});
+            }} else {{
+                el.select();
+                document.execCommand('copy');
+            }}
+        ">Copy to clipboard</button>
+        """
+        components.html(copy_html, height=44)
 
     return None
 
 
 def share_snippet(verdict: str, confidence: int, category: str, warning_message: str) -> str:
     """Generate short shareable text for friends."""
-    return f"⚠️ CheckMoYan verdict: {verdict} ({confidence}%) — {category}\n\n{warning_message}\n\n— Check if it's a scam: CheckMoYan"
+    w = _strip_html((warning_message or "").strip())
+    return f"⚠️ CheckMoYan verdict: {verdict} ({confidence}%) — {category}\n\n{w}\n\n— Check if it's a scam: CheckMoYan"
