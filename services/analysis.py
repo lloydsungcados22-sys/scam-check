@@ -19,14 +19,15 @@ Philippines-specific patterns to detect:
 - Urgency and fear tactics ("account suspended", "claim now")
 
 Rules:
-- Output ONLY valid JSON. No markdown, no extra text.
+- Output ONLY valid JSON. No markdown, no extra text. No HTML tags in any field (use plain text only).
 - If the message is clearly legitimate (e.g., official-looking, no red flags), use SAFE with high confidence.
 - If there are some red flags but not definitive, use SUSPICIOUS with moderate confidence (40-70).
 - If clearly a scam or phishing, use SCAM with high confidence (70-100).
 - Avoid false certainty: when unclear, prefer SUSPICIOUS over SCAM.
-- Detect language: English, Tagalog, or Mixed and note in safety_notes if relevant.
+- Detect language: English, Tagalog, or Mixed and note in safety_notes if relevant (plain text only, no HTML).
+- recommended_actions must be specific to this message (what the user should do next). Do not use generic fallbacks; align recommendations to the message content.
 
-Output JSON schema (use exactly these keys):
+Output JSON schema (use exactly these keys; all string values must be plain text, no HTML):
 {
   "verdict": "SAFE" | "SUSPICIOUS" | "SCAM",
   "confidence": <0-100 integer>,
@@ -35,7 +36,7 @@ Output JSON schema (use exactly these keys):
   "recommended_actions": ["action 1", "action 2", ...],
   "warning_message": "<short shareable warning text for friends, 1-2 sentences>",
   "red_flags": ["flag 1", "flag 2", ...],
-  "safety_notes": "<optional brief note>"
+  "safety_notes": "<optional brief note, plain text only>"
 }"""
 
 
@@ -53,20 +54,27 @@ def _sanitize(text: str) -> str:
     return t[:8000] if len(t) > 8000 else t
 
 
+def _strip_html(text: str) -> str:
+    """Remove HTML tags from AI output (e.g. SAFE verdict often returns <p> in safety_notes)."""
+    if not text or not isinstance(text, str):
+        return ""
+    t = str(text)
+    for _ in range(5):
+        t = re.sub(r"<[^>]*>", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
 def _parse_response(raw: str) -> dict:
-    """Parse JSON from model response with validation and fallbacks."""
-    fallback = {
+    """Parse JSON from model response. No fallback for recommendations — only use AI output for this message."""
+    parse_fallback = {
         "verdict": "SUSPICIOUS",
         "confidence": 50,
         "category": "Unknown",
         "reasons": ["Unable to fully analyze. Please verify through official channels."],
-        "recommended_actions": [
-            "Do not share OTP or personal details.",
-            "Contact the official company/bank via their verified website or hotline.",
-        ],
-        "warning_message": "This message could not be fully verified. Stay cautious.",
+        "recommended_actions": [],
+        "warning_message": "",
         "red_flags": [],
-        "safety_notes": "Analysis inconclusive.",
+        "safety_notes": "",
     }
     raw = (raw or "").strip()
     # Remove markdown code block if present
@@ -76,9 +84,9 @@ def _parse_response(raw: str) -> dict:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        return fallback
+        return parse_fallback
     if not isinstance(data, dict):
-        return fallback
+        return parse_fallback
     verdict = (data.get("verdict") or "SUSPICIOUS").upper()
     if verdict not in ("SAFE", "SUSPICIOUS", "SCAM"):
         verdict = "SUSPICIOUS"
@@ -89,31 +97,40 @@ def _parse_response(raw: str) -> dict:
     category = data.get("category") or "Unknown"
     if not isinstance(category, str):
         category = "Unknown"
+    category = _strip_html(category) or "Unknown"
+
     reasons = data.get("reasons")
     if not isinstance(reasons, list):
-        reasons = fallback["reasons"]
-    reasons = [str(r) for r in reasons[:10]]
+        reasons = []
+    reasons = [_strip_html(str(r)) for r in reasons[:10] if r]
+
     recommended_actions = data.get("recommended_actions")
     if not isinstance(recommended_actions, list):
-        recommended_actions = fallback["recommended_actions"]
-    recommended_actions = [str(a) for a in recommended_actions[:10]]
+        recommended_actions = []
+    recommended_actions = [_strip_html(str(a)) for a in recommended_actions[:10] if a]
+
     warning_message = data.get("warning_message")
     if not isinstance(warning_message, str):
-        warning_message = fallback["warning_message"]
+        warning_message = ""
+    warning_message = _strip_html(warning_message)
+
     red_flags = data.get("red_flags")
     if not isinstance(red_flags, list):
         red_flags = []
-    red_flags = [str(f) for f in red_flags[:10]]
+    red_flags = [_strip_html(str(f)) for f in red_flags[:10] if f]
+
     safety_notes = data.get("safety_notes") or ""
     if not isinstance(safety_notes, str):
         safety_notes = ""
+    safety_notes = _strip_html(safety_notes)
+
     return {
         "verdict": verdict,
         "confidence": confidence,
         "category": category,
-        "reasons": reasons or fallback["reasons"],
-        "recommended_actions": recommended_actions or fallback["recommended_actions"],
-        "warning_message": warning_message or fallback["warning_message"],
+        "reasons": reasons,
+        "recommended_actions": recommended_actions,
+        "warning_message": warning_message,
         "red_flags": red_flags,
         "safety_notes": safety_notes,
     }
