@@ -21,24 +21,29 @@ def _get_limits():
 
 
 def get_daily_limit(email: str) -> int:
-    """Return max checks per day for this user (free vs premium/pro)."""
+    """Return max checks per day for this user. Premium/Pro get unlimited unless expired."""
     if not email:
         free, _ = _get_limits()
         return free
     ensure_user(email)
     plan_info = get_user_plan(email)
-    plan = (plan_info.get("plan") or "free").lower()
+    plan = (plan_info.get("plan") or "free").lower().strip()
     premium_until = plan_info.get("premium_until")
-    # If premium/pro but expired, treat as free
-    if plan in ("premium", "pro") and premium_until:
+    # Premium/Pro: unlimited. If premium_until is set and in the past, treat as free (expired).
+    if plan in ("premium", "pro"):
+        if not premium_until or not str(premium_until).strip():
+            # No expiry = ongoing premium/pro → unlimited
+            _, premium = _get_limits()
+            return premium
         from datetime import datetime
         try:
-            until = datetime.strptime(premium_until, "%Y-%m-%d").date()
+            until = datetime.strptime(str(premium_until).strip()[:10], "%Y-%m-%d").date()
             if until >= datetime.utcnow().date():
                 _, premium = _get_limits()
                 return premium
         except Exception:
             pass
+        # Expired: fall through to free limit
     free, _ = _get_limits()
     return free
 
@@ -50,7 +55,10 @@ def can_user_check(email: str) -> tuple[bool, str]:
     limit = get_daily_limit(email)
     used = get_usage_today(email or "anonymous")
     if used >= limit:
-        return False, f"You've used {used} of {limit} free checks today. Upgrade to Premium for unlimited checks."
+        msg = f"You've used {used} of {limit} checks today."
+        if limit < 100:  # free-tier limit
+            msg += " Upgrade to Premium for unlimited checks."
+        return False, msg
     return True, ""
 
 
