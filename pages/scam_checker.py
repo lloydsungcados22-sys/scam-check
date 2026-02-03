@@ -97,6 +97,8 @@ def run():
                     )
                     st.session_state["last_result"] = result
                     st.session_state["last_message"] = message.strip()
+                    # New key so share section (message + verdict) updates when CheckMoYan is clicked again
+                    st.session_state["last_result_key"] = hash((message.strip(), result.get("verdict", ""), result.get("msg_hash", "")))
                     st.rerun()
 
     if st.session_state.get("last_result"):
@@ -108,7 +110,8 @@ def run():
         st.subheader("Verdict")
         # Use saved message so share section has message + verdict even if user clears the box
         last_message = st.session_state.get("last_message") or st.session_state.get("scam_message") or ""
-        verdict_card(st.session_state["last_result"], message=last_message)
+        result_key = st.session_state.get("last_result_key", 0)
+        verdict_card(st.session_state["last_result"], message=last_message, result_key=result_key)
 
     st.markdown("---")
     st.caption("We do not store your full message. Only verdict and category are saved. AI can be wrong — verify with official channels (GCash, Maya, banks, SSS, PhilHealth).")
