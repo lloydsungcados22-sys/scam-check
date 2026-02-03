@@ -59,8 +59,12 @@ def _build_full_share_text(result: dict, message: str = "") -> str:
         lines.append("  • " + _strip_html(str(r)))
     lines.append("")
     lines.append("What to do next:")
-    for i, a in enumerate(actions[:6], 1):
-        lines.append(f"  {i}. " + _strip_html(str(a)))
+    actions_clean = [a for a in (actions[:6] or []) if a and _strip_html(str(a))]
+    if actions_clean:
+        for i, a in enumerate(actions_clean, 1):
+            lines.append(f"  {i}. " + _strip_html(str(a)))
+    else:
+        lines.append("  No specific actions for this message.")
     if red_flags:
         lines.append("")
         lines.append("Red flags: " + ", ".join(_strip_html(str(f)) for f in red_flags[:5]))
@@ -88,7 +92,8 @@ def verdict_card(result: dict, message: str = ""):
     color = _verdict_color(verdict)
 
     reasons_esc = "".join(f"<li>{_escape(_strip_html(str(r)))}</li>" for r in reasons[:8])
-    actions_esc = "".join(f"<li>{_escape(_strip_html(str(a)))}</li>" for a in recommended_actions[:6])
+    actions_list = [a for a in recommended_actions[:6] if a and _strip_html(str(a))]
+    actions_esc = "".join(f"<li>{_escape(_strip_html(str(a)))}</li>" for a in actions_list) if actions_list else f"<li style=\"color: {TEXT_MUTED};\">No specific actions for this message.</li>"
     red_flags_esc = ", ".join(_escape(_strip_html(str(f))) for f in red_flags[:5]) if red_flags else ""
     list_color = "#e2e8f0"
 
