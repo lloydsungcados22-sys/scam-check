@@ -15,13 +15,16 @@ def _verdict_color(verdict: str) -> str:
 
 
 def _strip_html(s: str) -> str:
-    """Remove HTML tags so AI-returned HTML is shown as plain text."""
+    """Remove HTML tags so AI-returned HTML is shown as plain text (e.g. SAFE verdict <p> in safety_notes)."""
     if not s or not isinstance(s, str):
         return ""
     t = str(s)
-    # Remove tags (repeat for nested tags)
-    for _ in range(5):
-        t = re.sub(r"<[^>]*>", "", t)
+    # Remove any <...> tags (repeat for nested); support newlines inside tags
+    for _ in range(8):
+        t = re.sub(r"<[^>]*>", "", t, flags=re.DOTALL)
+    # Remove any leftover angle brackets or fragments
+    t = re.sub(r"<[^>]*", "", t)
+    t = t.replace(">", " ")
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
@@ -79,8 +82,9 @@ def _build_full_share_text(result: dict, message: str = "") -> str:
     return "\n".join(lines)
 
 
-def verdict_card(result: dict, message: str = ""):
-    """Render big verdict card: label, confidence, category, reasons, actions, red flags, copy/share section."""
+def verdict_card(result: dict, message: str = "", result_key: int = 0):
+    """Render big verdict card: label, confidence, category, reasons, actions, red flags, copy/share section.
+    result_key: unique per run so Message + verdict section updates when CheckMoYan is clicked again."""
     verdict = (result.get("verdict") or "SUSPICIOUS").upper()
     confidence = result.get("confidence", 0)
     category = _strip_html(str(result.get("category") or "Unknown"))
@@ -88,7 +92,11 @@ def verdict_card(result: dict, message: str = ""):
     recommended_actions = result.get("recommended_actions") or []
     warning_message = result.get("warning_message") or ""
     red_flags = result.get("red_flags") or []
-    safety_notes = _strip_html((result.get("safety_notes") or "").strip())
+    safety_notes_raw = (result.get("safety_notes") or "").strip()
+    safety_notes = _strip_html(safety_notes_raw)
+    # Ensure no HTML can slip through (SAFE verdict often returns <p>... in safety_notes)
+    if safety_notes != safety_notes_raw and not safety_notes:
+        safety_notes = _strip_html(safety_notes_raw.replace("\n", " "))
     color = _verdict_color(verdict)
 
     reasons_esc = "".join(f"<li>{_escape(_strip_html(str(r)))}</li>" for r in reasons[:8])
@@ -115,13 +123,13 @@ def verdict_card(result: dict, message: str = ""):
             <h4 style="color: {TEXT_PRIMARY}; margin: 0 0 0.5rem 0;">What to do next</h4>
             <ol style="color: {list_color}; margin: 0 0 1rem 0; padding-left: 1.25rem; line-height: 1.5;">{actions_esc}</ol>
             {"<p style=\"color: " + ALERT_AMBER + "; font-size: 0.9rem;\">🚩 Red flags: " + red_flags_esc + "</p>" if red_flags else ""}
-            {"<p style=\"color: " + list_color + "; font-size: 0.9rem; margin-top: 0.5rem;\">" + _escape(safety_notes) + "</p>" if safety_notes else ""}
+            {"<p style=\"color: " + list_color + "; font-size: 0.9rem; margin-top: 0.5rem;\">" + _escape(_strip_html(safety_notes)) + "</p>" if safety_notes else ""}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # Share section: full message + verdict (always show when we have a result)
+    # Share section: full message + verdict (updates when new result is generated via result_key)
     full_text = _build_full_share_text(result, message)
     st.subheader("Copy or share this result")
     st.caption("Message + verdict. Select the text and press Ctrl+C (Cmd+C) to copy, or use Download.")
@@ -129,7 +137,7 @@ def verdict_card(result: dict, message: str = ""):
         "Full result (message + verdict)",
         value=full_text,
         height=220,
-        key="share_snippet_area",
+        key=f"share_snippet_area_{result_key}",
         label_visibility="collapsed",
     )
     col1, col2 = st.columns([1, 1])
@@ -139,7 +147,7 @@ def verdict_card(result: dict, message: str = ""):
             data=full_text,
             file_name="checkmoyan_verdict.txt",
             mime="text/plain",
-            key="download_verdict_btn",
+            key=f"download_verdict_btn_{result_key}",
         )
     with col2:
         # One-click copy via browser clipboard (text in hidden textarea to avoid quote/HTML issues)
