@@ -55,12 +55,14 @@ def _sanitize(text: str) -> str:
 
 
 def _strip_html(text: str) -> str:
-    """Remove HTML tags from AI output (e.g. SAFE verdict often returns <p> in safety_notes)."""
+    """Remove HTML tags from AI output (e.g. SAFE verdict often returns <p style=...> in safety_notes)."""
     if not text or not isinstance(text, str):
         return ""
     t = str(text)
-    for _ in range(5):
-        t = re.sub(r"<[^>]*>", "", t)
+    for _ in range(8):
+        t = re.sub(r"<[^>]*>", "", t, flags=re.DOTALL)
+    t = re.sub(r"<[^>]*", "", t)
+    t = t.replace(">", " ")
     return re.sub(r"\s+", " ", t).strip()
 
 
