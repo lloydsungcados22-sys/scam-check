@@ -30,7 +30,7 @@ def run():
                 border-left: 4px solid #06b6d4; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
             ">
                 <h2 style="color: #f1f5f9; margin: 0 0 0.5rem 0;">Log in to Admin</h2>
-                <p style="color: #94a3b8; margin: 0; font-size: 0.9rem;">Password is set in .streamlit/secrets.toml (ADMIN_PASSWORD).</p>
+               
             </div>
             """,
             unsafe_allow_html=True,
