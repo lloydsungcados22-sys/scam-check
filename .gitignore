@@ -1,0 +1,27 @@
+# Secrets — never commit real credentials (use secrets.toml.example as template)
+.streamlit/secrets.toml
+.env
+*.env.local
+
+# Local DB and uploads
+*.db
+receipts/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.venv/
+venv/
+env/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
